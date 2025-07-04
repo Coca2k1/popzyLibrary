@@ -1,21 +1,37 @@
 Popzy.elements = [];
 
 function Popzy(options = {}) {
+    if (!options.content && !options.templateId) {
+        console.error("You must provide one of 'content' or 'templateId'");
+        return;
+    }
+
+    if (options.content && options.templateId) {
+        options.templateId = null;
+        console.warn(
+            "Both 'content' and 'templateId' are specified. 'content' will take precedence, and 'templateId' will be ignored."
+        );
+    }
+
     this.opt = Object.assign(
         {
             closeMethods: ["button", "overlay", "Escape"],
             destroyOnClose: true,
             cssClass: [],
+            enableScrollLock: true,
+            scrollLockTarget: () => document.body,
             footer: false,
         },
         options
     );
 
-    this.template = document.querySelector(`#${this.opt.templateId}`);
+    if (options.templateId) {
+        this.template = document.querySelector(`#${this.opt.templateId}`);
 
-    if (!this.template) {
-        console.error(`#${this.opt.templateId} doesn't exist!`);
-        return;
+        if (!this.template) {
+            console.error(`#${this.opt.templateId} doesn't exist!`);
+            return;
+        }
     }
 
     const { closeMethods } = this.opt;
@@ -47,7 +63,9 @@ Popzy.prototype._getScrollBarWidth = function () {
 };
 
 Popzy.prototype._build = function () {
-    const content = this.template.content.cloneNode(true);
+    const contentNode = this.opt.content
+        ? document.createElement("div")
+        : this.template.content.cloneNode(true);
 
     // create modal elements
 
@@ -57,12 +75,18 @@ Popzy.prototype._build = function () {
     const container = document.createElement("div");
     container.className = "popzy__container";
 
-    const modalContent = document.createElement("div");
-    modalContent.className = "popzy__content";
+    this._modalContent = document.createElement("div");
+    this._modalContent.className = "popzy__content";
 
     // Append content and element
-    modalContent.appendChild(content);
-    container.append(modalContent);
+
+    if (this.opt.content) {
+        contentNode.innerHTML = this.opt.content;
+    }
+
+    this._modalContent.appendChild(contentNode);
+
+    container.append(this._modalContent);
 
     if (!this.opt.footer) {
         container.style.paddingBottom = "40px";
@@ -173,8 +197,17 @@ Popzy.prototype.open = function () {
     }
 
     // hidden scroll and handle problem about scroll when modal appear/disappear
-    document.body.style.paddingRight = this._getScrollBarWidth() + "px";
-    document.body.classList.add("popzy--no-scroll");
+    if (Popzy.elements.length === 1 && this.opt.enableScrollLock) {
+        const target = this.opt.scrollLockTarget();
+
+        const padRightTarget = parseInt(getComputedStyle(target).paddingRight);
+
+        if (this._hasScrollBar(target)) {
+            target.style.paddingRight =
+                padRightTarget + this._getScrollBarWidth() + "px";
+            target.classList.add("popzy--no-scroll");
+        }
+    }
 
     // onOpen()
     this._onTransitionEnd(this.opt.onOpen);
@@ -208,13 +241,33 @@ Popzy.prototype.close = function (destroy = this.opt.destroyOnClose) {
             document.removeEventListener("keydown", this._handleEscapeKey);
         }
 
-        if (!Popzy.elements.length) {
-            document.body.classList.remove("popzy--no-scroll");
-            document.body.style.paddingRight = "";
+        if (!Popzy.elements.length & this.opt.enableScrollLock) {
+            const target = this.opt.scrollLockTarget();
+
+            target.classList.remove("popzy--no-scroll");
+            target.style.paddingRight = "";
         }
     });
 };
 
 this.destroy = function () {
     this.close(true);
+};
+
+Popzy.prototype.setContent = function (content) {
+    this._content = content;
+    if (this._modalContent) {
+        this._modalContent.innerHTML = this._content;
+    }
+};
+
+Popzy.prototype._hasScrollBar = function (target) {
+    if ([document.body, document.documentElement].includes(target)) {
+        return (
+            document.body.scrollHeight > document.body.clientHeight ||
+            document.documentElement.scrollHeight >
+                document.documentElement.clientHeight
+        );
+    }
+    return target.scrollHeight > target.clientHeight;
 };
